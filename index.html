@@ -122,7 +122,7 @@
     .toast-msg img { width: 40px; height: 40px; filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.8)); }
 
     /* =======================================================
-       ESTILOS DASHBOARD ADMIN APRIMORADOS (TECH/CLEAN)
+       ESTILOS DASHBOARD ADMIN
        ======================================================= */
     
     /* Menu Lateral Admin */
@@ -307,7 +307,7 @@
     }
     .btn-add { background: rgba(255,204,0,0.1); border: 1px solid rgba(255,204,0,0.3); color: var(--admin-neon); }
     .btn-add:hover { background: rgba(255,204,0,0.2); border-color: var(--admin-neon); }
-    .btn-save { background: var(--admin-neon); color: #000; box-shadow: 0 0 15px rgba(255,204,0,0.3); }
+    .btn-save { background: var(--admin-neon); color: #000; box-shadow: 0 0 15px rgba(255,204,0,0.3); transition: all 0.3s; }
     .btn-save:hover { background: #ffdf33; box-shadow: 0 0 25px rgba(255,204,0,0.5); transform: translateY(-2px); }
 
     @media (max-width: 850px) {
@@ -469,7 +469,6 @@
     import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js";
     import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, onSnapshot, writeBatch, query, orderBy } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
 
-    // Sua Configuração
     const firebaseConfig = {
       apiKey: "AIzaSyBAJH6JsVm0UHgUCPwpxGI6c67TsOKEoSM",
       authDomain: "painel-feedbacks.firebaseapp.com",
@@ -491,7 +490,9 @@
     window.viewAtual = 'PAINEL'; 
     window.divisoesData = {};
     window.divisaoTemasData = {};
-    window.usuarioLogadoNick = ''; // Guarda o nick de quem está logado
+    window.usuarioLogadoEmail = ''; 
+    window.usuarioLogadoNick = ''; 
+    window.usuarioLogadoNivel = ''; 
 
     // Sistema de Login
     window.loginGoogle = function() {
@@ -522,18 +523,20 @@
 
     async function verificarAcesso(user) {
       const emailLogado = user.email.toLowerCase();
+      window.usuarioLogadoEmail = emailLogado;
+
       const acessosRef = collection(db, "acessos");
       const acessosSnap = await getDocs(acessosRef);
       
       if (acessosSnap.empty) {
-        await setDoc(doc(acessosRef, emailLogado), { email: emailLogado, nivel: 'ADMIN', nick: '' });
-        alert("Sistema Inicializado! Você foi registrado como o primeiro Administrador.");
+        await setDoc(doc(acessosRef, emailLogado), { email: emailLogado, nivel: 'LIDER', nick: '' });
+        alert("Sistema Inicializado! Você foi registrado como o primeiro LIDER do sistema.");
         window.location.reload();
         return;
       }
 
       let autorizado = false;
-      let nivelUsuario = 'COMUM';
+      window.usuarioLogadoNivel = 'COMUM';
       window.acessosData = [];
       window.usuarioLogadoNick = '';
 
@@ -542,8 +545,7 @@
         window.acessosData.push({ id: d.id, email: dados.email, nivel: dados.nivel, nick: dados.nick || '' });
         if (dados.email === emailLogado) {
           autorizado = true;
-          nivelUsuario = dados.nivel;
-          // Salva o nick do usuário logado para usarmos na trava de leitura
+          window.usuarioLogadoNivel = dados.nivel;
           window.usuarioLogadoNick = dados.nick ? dados.nick.toLowerCase().trim() : ''; 
         }
       });
@@ -554,7 +556,8 @@
         return;
       }
 
-      if (nivelUsuario === 'ADMIN') {
+      // LIDER e ADMIN acessam o painel de controle
+      if (window.usuarioLogadoNivel === 'ADMIN' || window.usuarioLogadoNivel === 'LIDER') {
         document.getElementById('btnToggleAdmin').style.display = 'block';
         window.renderTabelasAdmin();
       }
@@ -641,7 +644,7 @@
           var ref = doc(collection(db, "acessos")); 
           batch.set(ref, { 
             email: email, 
-            nick: r.querySelector('.inp-nick').value.trim(), // Salva o nick
+            nick: r.querySelector('.inp-nick').value.trim(),
             nivel: r.querySelector('.inp-nivel').value.trim().toUpperCase() 
           });
         }
@@ -649,7 +652,8 @@
 
       try {
         await batch.commit();
-        window.mostrarToastAdmin("Acessos Salvos no Banco!");
+        alert("Acessos Salvos! A página será recarregada.");
+        window.location.reload();
       } catch(e) { alert("Erro ao salvar: " + e.message); }
     }
 
@@ -677,7 +681,7 @@
 
       try {
         await batch.commit();
-        alert("Divisões salvas com sucesso! A página será recarregada para aplicar as cores.");
+        alert("Divisões salvas com sucesso! A página será recarregada.");
         window.location.reload();
       } catch(e) { alert("Erro ao salvar: " + e.message); }
     }
@@ -729,15 +733,23 @@
     }
 
     window.criarRowAcesso = function(item) {
+      var isMinhaLinha = (item.email === window.usuarioLogadoEmail);
+      var souLider = (window.usuarioLogadoNivel === 'LIDER');
+      var acoesHtml = '';
+
+      if (isMinhaLinha && !souLider) {
+        acoesHtml = '<span style="color: var(--text-sub); font-size: 13px; font-weight: 600; padding-left: 10px;"><i class="fas fa-lock"></i> Bloqueado</span>';
+      } else {
+        acoesHtml = '<button class="btn-admin-icon btn-admin-edit" onclick="toggleEditRow(this)" title="Editar"><i class="fas fa-pencil-alt"></i></button>' +
+                    '<button class="btn-admin-icon btn-admin-del" onclick="this.closest(\'tr\').remove()" title="Excluir"><i class="fas fa-trash"></i></button>';
+      }
+
       var tr = document.createElement('tr');
       tr.innerHTML = 
         '<td><input type="text" class="admin-input inp-email" value="' + (item.email || '') + '" readonly></td>' +
         '<td><input type="text" class="admin-input inp-nick" value="' + (item.nick || '') + '" placeholder="Nick exato..." readonly></td>' +
-        '<td><input type="text" class="admin-input inp-nivel" value="' + (item.nivel || 'COMUM') + '" placeholder="ADMIN ou COMUM" readonly></td>' +
-        '<td class="action-cell">' +
-          '<button class="btn-admin-icon btn-admin-edit" onclick="toggleEditRow(this)" title="Editar"><i class="fas fa-pencil-alt"></i></button>' +
-          '<button class="btn-admin-icon btn-admin-del" onclick="this.closest(\'tr\').remove()" title="Excluir"><i class="fas fa-trash"></i></button>' +
-        '</td>';
+        '<td><input type="text" class="admin-input inp-nivel" value="' + (item.nivel || 'COMUM') + '" placeholder="LIDER, ADMIN ou COMUM" readonly></td>' +
+        '<td class="action-cell">' + acoesHtml + '</td>';
       return tr;
     }
 
@@ -785,8 +797,17 @@
       setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 3000);
     }
 
-    window.addLinhaAcesso = function() { var tr = window.criarRowAcesso({}); document.querySelector('#tbAcessos tbody').appendChild(tr); window.toggleEditRow(tr.querySelector('.btn-admin-edit')); }
-    window.addLinhaDivisao = function() { var tr = window.criarRowDivisao({}); document.querySelector('#tbDivisoes tbody').appendChild(tr); window.toggleEditRow(tr.querySelector('.btn-admin-edit')); }
+    window.addLinhaAcesso = function() { 
+      var tr = window.criarRowAcesso({}); 
+      document.querySelector('#tbAcessos tbody').appendChild(tr); 
+      window.toggleEditRow(tr.querySelector('.btn-admin-edit')); 
+    }
+    
+    window.addLinhaDivisao = function() { 
+      var tr = window.criarRowDivisao({}); 
+      document.querySelector('#tbDivisoes tbody').appendChild(tr); 
+      window.toggleEditRow(tr.querySelector('.btn-admin-edit')); 
+    }
 
     window.preencherSelect = function() {
       var select = document.getElementById('divisaoSelect');
@@ -873,7 +894,6 @@
 
       var linkDoc = item.linkDoc || '';
       
-      // LOGICA DE TRAVA DE ÉTICA (Bloqueia visualização do próprio feedback)
       var membroAvaliado = (item.membro || '').toLowerCase().trim();
       var isProprioFeedback = (membroAvaliado !== '' && membroAvaliado === window.usuarioLogadoNick);
       
