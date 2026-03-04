@@ -68,9 +68,12 @@
     .input-block:focus-within { border-color: var(--dynamic-neon); box-shadow: 0 0 12px var(--dynamic-glow); }
     .input-block i { color: var(--dynamic-neon); font-size: 16px; }
     #searchBlock { display: none; }
-    select, input[type="text"] { width: 100%; background: transparent; border: none; color: var(--text-main); font-size: 16px; font-family: var(--font-ui); font-weight: 500; padding: 15px 10px; outline: none; appearance: none; letter-spacing: 1px; }
+    select, input[type="text"], input[type="number"] { width: 100%; background: transparent; border: none; color: var(--text-main); font-size: 16px; font-family: var(--font-ui); font-weight: 500; padding: 15px 10px; outline: none; appearance: none; letter-spacing: 1px; }
     select { cursor: pointer; color: var(--dynamic-select-text); text-transform: uppercase; }
     select option { background: var(--bg-panel); color: #fff; }
+    
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
     .division-badge-slot { width: 60px; height: 60px; border-radius: 50%; background: radial-gradient(circle, rgba(255,42,42,0.1) 0%, transparent 70%); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 15px rgba(255,42,42,0.05); opacity: 0; transition: opacity 0.4s; }
     .division-badge-slot.visible { opacity: 1; animation: slide-in-right 0.6s cubic-bezier(0.23, 1, 0.32, 1); }
@@ -307,7 +310,7 @@
     }
     .btn-add { background: rgba(255,204,0,0.1); border: 1px solid rgba(255,204,0,0.3); color: var(--admin-neon); }
     .btn-add:hover { background: rgba(255,204,0,0.2); border-color: var(--admin-neon); }
-    .btn-save { background: var(--admin-neon); color: #000; box-shadow: 0 0 15px rgba(255,204,0,0.3); transition: all 0.3s; }
+    .btn-save { background: var(--admin-neon); color: #000; box-shadow: 0 0 15px rgba(255,204,0,0.3); }
     .btn-save:hover { background: #ffdf33; box-shadow: 0 0 25px rgba(255,204,0,0.5); transform: translateY(-2px); }
 
     @media (max-width: 850px) {
@@ -403,8 +406,9 @@
             <table class="admin-table" id="tbAcessos">
               <thead>
                 <tr>
-                  <th style="width:40%">E-mail Google</th>
-                  <th style="width:30%">Nick no Habbo</th>
+                  <th style="width:10%">Ordem</th>
+                  <th style="width:35%">E-mail Google</th>
+                  <th style="width:25%">Nick no Habbo</th>
                   <th style="width:15%">Nível</th>
                   <th style="width:15%">Ações</th>
                 </tr>
@@ -424,13 +428,14 @@
             <table class="admin-table" id="tbDivisoes">
               <thead>
                 <tr>
-                  <th>Nome</th>
-                  <th>Link Emblema (.gif/.png)</th>
-                  <th>Neon (Hex)</th>
-                  <th>Glow (Rgba)</th>
-                  <th>Painel (Hex)</th>
-                  <th>Texto (Hex)</th>
-                  <th>Ações</th>
+                  <th style="width:8%">Ordem</th>
+                  <th style="width:15%">Nome</th>
+                  <th style="width:25%">Link Emblema</th>
+                  <th style="width:12%">Neon</th>
+                  <th style="width:12%">Glow</th>
+                  <th style="width:12%">Painel</th>
+                  <th style="width:12%">Texto</th>
+                  <th style="width:4%">Ações</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -493,6 +498,7 @@
     window.usuarioLogadoEmail = ''; 
     window.usuarioLogadoNick = ''; 
     window.usuarioLogadoNivel = ''; 
+    window.draggedRow = null; // Variável global para gerenciar o Drag and Drop
 
     // Sistema de Login
     window.loginGoogle = function() {
@@ -529,7 +535,7 @@
       const acessosSnap = await getDocs(acessosRef);
       
       if (acessosSnap.empty) {
-        await setDoc(doc(acessosRef, emailLogado), { email: emailLogado, nivel: 'LIDER', nick: '' });
+        await setDoc(doc(db, "acessos", emailLogado), { email: emailLogado, nivel: 'LIDER', nick: '', ordem: 1 });
         alert("Sistema Inicializado! Você foi registrado como o primeiro LIDER do sistema.");
         window.location.reload();
         return;
@@ -542,7 +548,7 @@
 
       acessosSnap.forEach(d => {
         let dados = d.data();
-        window.acessosData.push({ id: d.id, email: dados.email, nivel: dados.nivel, nick: dados.nick || '' });
+        window.acessosData.push({ id: d.id, email: dados.email, nivel: dados.nivel, nick: dados.nick || '', ordem: dados.ordem });
         if (dados.email === emailLogado) {
           autorizado = true;
           window.usuarioLogadoNivel = dados.nivel;
@@ -555,6 +561,11 @@
         window.logoutGoogle();
         return;
       }
+
+      // Ordenação rigorosa e definida pelo campo Ordem
+      window.acessosData.sort((a, b) => {
+        return (a.ordem || 999) - (b.ordem || 999);
+      });
 
       // LIDER e ADMIN acessam o painel de controle
       if (window.usuarioLogadoNivel === 'ADMIN' || window.usuarioLogadoNivel === 'LIDER') {
@@ -638,22 +649,27 @@
       
       window.acessosData.forEach(ac => { batch.delete(doc(db, "acessos", ac.id)); });
 
+      let fallbackOrdem = 1;
       rows.forEach(r => {
         var email = r.querySelector('.inp-email').value.trim().toLowerCase();
         if(email) {
-          var ref = doc(collection(db, "acessos")); 
+          var ref = doc(db, "acessos", email); 
+          var ordemVal = parseInt(r.querySelector('.inp-ordem').value);
+          if (isNaN(ordemVal)) ordemVal = fallbackOrdem;
+          
           batch.set(ref, { 
             email: email, 
             nick: r.querySelector('.inp-nick').value.trim(),
-            nivel: r.querySelector('.inp-nivel').value.trim().toUpperCase() 
+            nivel: r.querySelector('.inp-nivel').value.trim().toUpperCase(),
+            ordem: ordemVal
           });
+          fallbackOrdem++;
         }
       });
 
       try {
         await batch.commit();
-        alert("Acessos Salvos! A página será recarregada.");
-        window.location.reload();
+        window.mostrarToastAdmin("Acessos Salvos no Banco!");
       } catch(e) { alert("Erro ao salvar: " + e.message); }
     }
 
@@ -663,10 +679,13 @@
 
       window.divisoesDataArray.forEach(d => { batch.delete(doc(db, "divisoes", d.nome)); });
 
-      let indexOrdem = 1; 
+      let fallbackOrdem = 1; 
       rows.forEach(r => {
         var nome = r.querySelector('.inp-nome').value.trim();
         if(nome) {
+          var ordemVal = parseInt(r.querySelector('.inp-ordem').value);
+          if (isNaN(ordemVal)) ordemVal = fallbackOrdem;
+
           batch.set(doc(db, "divisoes", nome), {
             nome: nome,
             emblema: r.querySelector('.inp-emblema').value.trim(),
@@ -674,15 +693,16 @@
             glow: r.querySelector('.inp-glow').value.trim(),
             panel: r.querySelector('.inp-panel').value.trim(),
             text: r.querySelector('.inp-text').value.trim(),
-            ordem: indexOrdem++ 
+            ordem: ordemVal 
           });
+          fallbackOrdem++;
         }
       });
 
       try {
         await batch.commit();
-        alert("Divisões salvas com sucesso! A página será recarregada.");
-        window.location.reload();
+        window.mostrarToastAdmin("Divisões Salvas no Banco!");
+        setTimeout(() => { window.location.reload(); }, 1500);
       } catch(e) { alert("Erro ao salvar: " + e.message); }
     }
 
@@ -719,6 +739,43 @@
       }
     }
 
+    // ==========================================
+    // SISTEMA DRAG AND DROP PARA TABELAS
+    // ==========================================
+    window.makeRowDraggable = function(tr) {
+      tr.addEventListener('dragstart', function(e) {
+        window.draggedRow = tr;
+        e.dataTransfer.effectAllowed = 'move';
+        setTimeout(() => { tr.style.opacity = '0.4'; }, 0);
+      });
+
+      tr.addEventListener('dragover', function(e) {
+        e.preventDefault(); 
+        if (!window.draggedRow || window.draggedRow === tr) return;
+        
+        const bounding = tr.getBoundingClientRect();
+        const offset = bounding.y + (bounding.height / 2);
+        
+        if (e.clientY > offset) {
+          tr.after(window.draggedRow);
+        } else {
+          tr.before(window.draggedRow);
+        }
+      });
+
+      tr.addEventListener('dragend', function(e) {
+        tr.style.opacity = '1';
+        let index = 1;
+        tr.parentElement.querySelectorAll('tr').forEach(row => {
+          let inp = row.querySelector('.inp-ordem');
+          if (inp) inp.value = index;
+          row.setAttribute('data-ordem', index);
+          index++;
+        });
+        window.draggedRow = null;
+      });
+    };
+
     window.renderTabelasAdmin = function() {
       var tbAcessos = document.querySelector('#tbAcessos tbody');
       if(tbAcessos) {
@@ -745,11 +802,15 @@
       }
 
       var tr = document.createElement('tr');
+      tr.setAttribute('data-ordem', item.ordem || '');
       tr.innerHTML = 
+        '<td><input type="number" class="admin-input inp-ordem" value="' + (item.ordem !== undefined ? item.ordem : '') + '" readonly style="text-align: center; pointer-events: none;"></td>' +
         '<td><input type="text" class="admin-input inp-email" value="' + (item.email || '') + '" readonly></td>' +
         '<td><input type="text" class="admin-input inp-nick" value="' + (item.nick || '') + '" placeholder="Nick exato..." readonly></td>' +
         '<td><input type="text" class="admin-input inp-nivel" value="' + (item.nivel || 'COMUM') + '" placeholder="LIDER, ADMIN ou COMUM" readonly></td>' +
         '<td class="action-cell">' + acoesHtml + '</td>';
+      
+      window.makeRowDraggable(tr);
       return tr;
     }
 
@@ -759,7 +820,9 @@
       var text = item.text || '#ffffff';
       
       var tr = document.createElement('tr');
+      tr.setAttribute('data-ordem', item.ordem || '');
       tr.innerHTML = 
+        '<td><input type="number" class="admin-input inp-ordem" value="' + (item.ordem !== undefined ? item.ordem : '') + '" readonly style="text-align: center; pointer-events: none;"></td>' +
         '<td><input type="text" class="admin-input inp-nome" value="' + (item.nome || '') + '" readonly></td>' +
         '<td><input type="text" class="admin-input inp-emblema" value="' + (item.emblema || '') + '" readonly></td>' +
         '<td><div class="color-picker-wrapper"><input type="color" class="color-picker" value="' + neon + '" disabled oninput="this.nextElementSibling.value=this.value"><input type="text" class="admin-input inp-neon" value="' + neon + '" readonly oninput="if(this.value.length === 7) this.previousElementSibling.value=this.value"></div></td>' +
@@ -767,12 +830,20 @@
         '<td><div class="color-picker-wrapper"><input type="color" class="color-picker" value="' + panel + '" disabled oninput="this.nextElementSibling.value=this.value"><input type="text" class="admin-input inp-panel" value="' + panel + '" readonly oninput="if(this.value.length === 7) this.previousElementSibling.value=this.value"></div></td>' +
         '<td><div class="color-picker-wrapper"><input type="color" class="color-picker" value="' + text + '" disabled oninput="this.nextElementSibling.value=this.value"><input type="text" class="admin-input inp-text" value="' + text + '" readonly oninput="if(this.value.length === 7) this.previousElementSibling.value=this.value"></div></td>' +
         '<td class="action-cell"><button class="btn-admin-icon btn-admin-edit" onclick="toggleEditRow(this)" title="Editar"><i class="fas fa-pencil-alt"></i></button><button class="btn-admin-icon btn-admin-del" onclick="this.closest(\'tr\').remove()" title="Excluir"><i class="fas fa-trash"></i></button></td>';
+      
+      window.makeRowDraggable(tr);
       return tr;
     }
 
     window.toggleEditRow = function(btn) {
       var tr = btn.closest('tr');
-      tr.querySelectorAll('input').forEach(inp => { if(inp.type === 'color') inp.disabled = false; else inp.removeAttribute('readonly'); });
+      tr.querySelectorAll('input').forEach(inp => { 
+        if(inp.type === 'color') inp.disabled = false; 
+        else if(!inp.classList.contains('inp-ordem')) inp.removeAttribute('readonly'); 
+      });
+      tr.setAttribute('draggable', 'true');
+      tr.style.cursor = 'move';
+      tr.title = "Clique e arraste para reordenar";
       btn.innerHTML = '<i class="fas fa-check"></i>';
       btn.classList.add('btn-admin-check');
       btn.onclick = function() { window.confirmEditRow(btn); };
@@ -780,7 +851,13 @@
 
     window.confirmEditRow = function(btn) {
       var tr = btn.closest('tr');
-      tr.querySelectorAll('input').forEach(inp => { if(inp.type === 'color') inp.disabled = true; else inp.setAttribute('readonly', true); });
+      tr.querySelectorAll('input').forEach(inp => { 
+        if(inp.type === 'color') inp.disabled = true; 
+        else inp.setAttribute('readonly', true); 
+      });
+      tr.removeAttribute('draggable');
+      tr.style.cursor = 'default';
+      tr.title = "";
       btn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
       btn.classList.remove('btn-admin-check');
       btn.onclick = function() { window.toggleEditRow(btn); };
@@ -798,14 +875,16 @@
     }
 
     window.addLinhaAcesso = function() { 
-      var tr = window.criarRowAcesso({}); 
-      document.querySelector('#tbAcessos tbody').appendChild(tr); 
+      var tbody = document.querySelector('#tbAcessos tbody');
+      var tr = window.criarRowAcesso({ ordem: tbody.children.length + 1 }); 
+      tbody.appendChild(tr); 
       window.toggleEditRow(tr.querySelector('.btn-admin-edit')); 
     }
     
     window.addLinhaDivisao = function() { 
-      var tr = window.criarRowDivisao({}); 
-      document.querySelector('#tbDivisoes tbody').appendChild(tr); 
+      var tbody = document.querySelector('#tbDivisoes tbody');
+      var tr = window.criarRowDivisao({ ordem: tbody.children.length + 1 }); 
+      tbody.appendChild(tr); 
       window.toggleEditRow(tr.querySelector('.btn-admin-edit')); 
     }
 
